@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-🎮 Gaming News & YouTube Telegram Bot
-يشتغل على Render مع web server صغير عشان ميناموش
+🎮 Gaming News & YouTube Telegram Bot — Railway Edition
 """
 
 import feedparser
@@ -10,8 +9,6 @@ import asyncio
 import logging
 import os
 from pathlib import Path
-from threading import Thread
-from flask import Flask
 from telegram import Bot
 from telegram.error import TelegramError
 from telegram.constants import ParseMode
@@ -23,41 +20,26 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# ─── Flask App (عشان Render ميناموش) ────────────────────────────────────────
-flask_app = Flask(__name__)
-
-@flask_app.route("/")
-def home():
-    return "🎮 Gaming Bot is running!", 200
-
-@flask_app.route("/health")
-def health():
-    return "OK", 200
-
-def run_flask():
-    port = int(os.environ.get("PORT", 8080))
-    flask_app.run(host="0.0.0.0", port=port)
-
-# ─── Config من Environment Variables أو config.json ─────────────────────────
 SEEN_FILE = "seen_items.json"
 
+# ─── Config من Environment Variables ────────────────────────────────────────
+
 def get_config():
-    """بياخد الإعدادات من Environment Variables (الأأمن على Render)"""
     return {
-        "telegram_token": os.environ.get("TELEGRAM_TOKEN", ""),
-        "channel_id":     os.environ.get("CHANNEL_ID", ""),
+        "telegram_token":        os.environ.get("TELEGRAM_TOKEN", ""),
+        "channel_id":            os.environ.get("CHANNEL_ID", ""),
         "check_interval_minutes": int(os.environ.get("CHECK_INTERVAL", "15")),
         "news_feeds": [
-            {"name": "IGN",      "url": "https://feeds.feedburner.com/ign/all",          "emoji": "🎮"},
-            {"name": "GameSpot", "url": "https://www.gamespot.com/feeds/mashup/",         "emoji": "🕹️"},
-            {"name": "Kotaku",   "url": "https://kotaku.com/rss",                         "emoji": "🎯"},
-            {"name": "PCGamer",  "url": "https://www.pcgamer.com/rss/",                   "emoji": "🖥️"},
-            {"name": "Polygon",  "url": "https://www.polygon.com/rss/index.xml",          "emoji": "📰"},
+            {"name": "IGN",      "url": "https://feeds.feedburner.com/ign/all",        "emoji": "🎮"},
+            {"name": "GameSpot", "url": "https://www.gamespot.com/feeds/mashup/",       "emoji": "🕹️"},
+            {"name": "Kotaku",   "url": "https://kotaku.com/rss",                       "emoji": "🎯"},
+            {"name": "PCGamer",  "url": "https://www.pcgamer.com/rss/",                 "emoji": "🖥️"},
+            {"name": "Polygon",  "url": "https://www.polygon.com/rss/index.xml",        "emoji": "📰"},
         ],
         "youtube_channels": json.loads(os.environ.get("YOUTUBE_CHANNELS", "[]"))
     }
 
-# ─── Helpers ────────────────────────────────────────────────────────────────
+# ─── Seen Items ──────────────────────────────────────────────────────────────
 
 def load_seen():
     if Path(SEEN_FILE).exists():
@@ -66,11 +48,10 @@ def load_seen():
     return set()
 
 def save_seen(seen):
-    trimmed = list(seen)[-2000:]
     with open(SEEN_FILE, "w") as f:
-        json.dump(trimmed, f)
+        json.dump(list(seen)[-2000:], f)
 
-# ─── Feed Fetchers ───────────────────────────────────────────────────────────
+# ─── Fetchers ────────────────────────────────────────────────────────────────
 
 def fetch_news(feed):
     try:
@@ -109,27 +90,26 @@ def fetch_youtube(channel):
         log.error(f"خطأ في قناة {channel['name']}: {ex}")
         return []
 
-# ─── Message Formatter ───────────────────────────────────────────────────────
+# ─── Formatter ───────────────────────────────────────────────────────────────
 
 def escape_md(text):
-    """Escape special chars for MarkdownV2"""
     for ch in r"_*[]()~`>#+-=|{}.!":
         text = text.replace(ch, f"\\{ch}")
     return text
 
 def format_message(item):
-    title = escape_md(item["title"])
+    title  = escape_md(item["title"])
     source = escape_md(item["source"])
-    link = item["link"]
+    link   = item["link"]
     if item["type"] == "youtube":
         return f"{item['emoji']} *فيديو جديد\\!*\n📺 *القناة:* {source}\n🎬 {title}\n\n🔗 {link}"
     else:
         return f"{item['emoji']} *خبر جديد\\!*\n📰 *المصدر:* {source}\n📝 {title}\n\n🔗 {link}"
 
-# ─── Main Bot Loop ───────────────────────────────────────────────────────────
+# ─── Main Loop ───────────────────────────────────────────────────────────────
 
 async def check_and_post(bot, config, seen):
-    new_seen = set(seen)
+    new_seen  = set(seen)
     all_items = []
 
     for feed in config["news_feeds"]:
@@ -158,14 +138,14 @@ async def check_and_post(bot, config, seen):
     log.info(f"📤 {posted} جديد." if posted else "🔍 مفيش جديد.")
     return new_seen
 
-async def bot_loop():
+async def run_bot():
     config = get_config()
 
     if not config["telegram_token"]:
-        log.error("❌ TELEGRAM_TOKEN مش موجود في Environment Variables!")
+        log.error("❌ TELEGRAM_TOKEN مش موجود!")
         return
     if not config["channel_id"]:
-        log.error("❌ CHANNEL_ID مش موجود في Environment Variables!")
+        log.error("❌ CHANNEL_ID مش موجود!")
         return
 
     bot      = Bot(token=config["telegram_token"])
@@ -182,13 +162,5 @@ async def bot_loop():
         log.info(f"😴 هيستنى {config['check_interval_minutes']} دقيقة...")
         await asyncio.sleep(interval)
 
-# ─── Entry Point ─────────────────────────────────────────────────────────────
-
 if __name__ == "__main__":
-    # شغّل Flask في thread منفصل
-    flask_thread = Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    log.info("🌐 Web server شغّال...")
-
-    # شغّل البوت
-    asyncio.run(bot_loop())
+    asyncio.run(run_bot())
