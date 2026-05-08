@@ -92,19 +92,18 @@ def fetch_youtube(channel):
 
 # ─── Formatter ───────────────────────────────────────────────────────────────
 
-def escape_md(text):
-    for ch in r"_*[]()~`>#+-=|{}.!":
-        text = text.replace(ch, f"\\{ch}")
-    return text
-
 def format_message(item):
-    title  = escape_md(item["title"])
-    source = escape_md(item["source"])
+    def esc(t):
+        return t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    title  = esc(item["title"])
+    source = esc(item["source"])
     link   = item["link"]
+
     if item["type"] == "youtube":
-        return f"{item['emoji']} *فيديو جديد\\!*\n📺 *القناة:* {source}\n🎬 {title}\n\n🔗 {link}"
+        return f"{item['emoji']} <b>فيديو جديد!</b>\n📺 <b>القناة:</b> {source}\n🎬 {title}\n\n🔗 {link}"
     else:
-        return f"{item['emoji']} *خبر جديد\\!*\n📰 *المصدر:* {source}\n📝 {title}\n\n🔗 {link}"
+        return f"{item['emoji']} <b>خبر جديد!</b>\n📰 <b>المصدر:</b> {source}\n📝 {title}\n\n🔗 {link}"
 
 # ─── Main Loop ───────────────────────────────────────────────────────────────
 
@@ -125,7 +124,7 @@ async def check_and_post(bot, config, seen):
                 await bot.send_message(
                     chat_id=config["channel_id"],
                     text=format_message(item),
-                    parse_mode=ParseMode.MARKDOWN_V2,
+                    parse_mode=ParseMode.HTML,
                     disable_web_page_preview=False
                 )
                 new_seen.add(iid)
